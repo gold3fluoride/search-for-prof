@@ -9,6 +9,7 @@ import time
 from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from importlib import resources
 from pathlib import Path
 from urllib import robotparser
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
@@ -104,17 +105,17 @@ class ProfessorRecruitingAgent:
 			},
 			'model': {'provider': 'openai', 'name': 'gpt-4o-mini'},
 		}
-		path = Path(config_path) if config_path else Path(__file__).with_name('phase1_config.yaml')
+		path = Path(config_path) if config_path else Path(str(resources.files('browser_use.professor_search') / 'phase1_config.yaml'))
 		if not path.exists():
 			return defaults
 		try:
 			import yaml
-		except Exception:
+		except ImportError:
 			return defaults
 		try:
 			with path.open(encoding='utf-8') as handle:
 				loaded = yaml.safe_load(handle) or {}
-		except Exception:
+		except (OSError, yaml.YAMLError):
 			return defaults
 		for section, values in defaults.items():
 			loaded.setdefault(section, {})
@@ -177,14 +178,12 @@ class ProfessorRecruitingAgent:
 				);
 				'''
 			)
-			for ddl in (
-				'ALTER TABLE pages_visited ADD COLUMN reason TEXT',
-				'ALTER TABLE results ADD COLUMN rank INTEGER DEFAULT 0',
-			):
-				try:
-					conn.execute(ddl)
-				except sqlite3.OperationalError:
-					pass
+			pages_columns = {row[1] for row in conn.execute('PRAGMA table_info(pages_visited)').fetchall()}
+			if 'reason' not in pages_columns:
+				conn.execute('ALTER TABLE pages_visited ADD COLUMN reason TEXT')
+			result_columns = {row[1] for row in conn.execute('PRAGMA table_info(results)').fetchall()}
+			if 'rank' not in result_columns:
+				conn.execute('ALTER TABLE results ADD COLUMN rank INTEGER DEFAULT 0')
 
 	def _normalize_url(self, url: str) -> str:
 		parsed = urlparse(url.strip())
@@ -339,7 +338,7 @@ class ProfessorRecruitingAgent:
 	def _llm_extract(self, text: str, url: str, degree_level: str | None, checked_at: str) -> RecruitingEvidence | None:
 		try:
 			from openai import OpenAI
-		except Exception:
+		except ImportError:
 			return None
 		import os
 
@@ -413,14 +412,22 @@ class ProfessorRecruitingAgent:
 		lowered = text.lower()
 		if any(token in lowered for token in ('fall', 'spring', 'this year', 'upcoming', 'currently')):
 			return True
-		years = [int(match) for match in re.findall(r'20\d{2}', text)]
+		years = self._extract_years(text)
 		return bool(years and max(years) >= datetime.now(UTC).year - 1)
 
 	def _looks_stale(self, url: str, text: str) -> bool:
 		if any(token in url.lower() for token in ('/news', '/blog', '/archive')):
 			return True
-		years = [int(match) for match in re.findall(r'20\d{2}', text)]
+		years = self._extract_years(text)
 		return bool(years and max(years) <= datetime.now(UTC).year - 2)
+
+	def _extract_years(self, text: str) -> list[int]:
+		years: list[int] = []
+		for match in re.findall(r'\b\d{4}\b', text):
+			year = int(match)
+			if 2000 <= year <= 2100:
+				years.append(year)
+		return years
 
 	def _calibrate_confidence(self, evidence: RecruitingEvidence) -> RecruitingEvidence:
 		confidence = evidence.confidence
@@ -597,9 +604,11 @@ class ProfessorRecruitingAgent:
 			unique_sources: dict[str, ProfessorSource] = {source.profile_url: source for source in sources}
 			selected_sources = list(unique_sources.values())[: request.max_professors] if request.max_professors else list(unique_sources.values())
 			results: list[tuple[int, Phase1Result]] = []
+			professor_id_lookup: dict[tuple[str, str], int] = {}
 			for source in selected_sources:
 				source = self._resolve_professor_urls(source)
 				professor_id = self._insert_professor(conn, source)
+				professor_id_lookup[(source.name, source.institution)] = professor_id
 				evidence, research_areas, visited = self.crawl_professor_pages(
 					seed_urls=[url for url in [source.homepage_url, source.lab_url, source.profile_url] if url],
 					limits={'max_depth': self.max_depth, 'page_cap': self.page_cap},
@@ -650,7 +659,7 @@ class ProfessorRecruitingAgent:
 				results.append((professor_id, result))
 			ranked = self.rank_results([result for _, result in results])
 			for rank_index, ranked_result in enumerate(ranked, start=1):
-				professor_id = next(pid for pid, result in results if result.name == ranked_result.name and result.institution == ranked_result.institution)
+				professor_id = professor_id_lookup[(ranked_result.name, ranked_result.institution)]
 				conn.execute(
 					'INSERT INTO results(run_id, professor_id, rank, fit_score, status, output_json) VALUES (?, ?, ?, ?, ?, ?)',
 					(

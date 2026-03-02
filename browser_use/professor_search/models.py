@@ -25,7 +25,7 @@ class Phase1Input(BaseModel):
 	interests: list[str] = Field(min_length=1)
 	target_institutions: list[str] = Field(min_length=1)
 	degree_level: DegreeLevel | None = None
-	max_professors: int | None = Field(default=None, ge=1, le=500)
+	max_professors: int | None = Field(default=None, ge=1)
 	start_term: str | None = None
 	notes: str | None = None
 
