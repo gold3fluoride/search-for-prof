@@ -79,8 +79,10 @@ class ProfessorRecruitingAgent:
 		max_depth: int = 2,
 		page_cap: int = 10,
 	) -> None:
-		assert max_depth >= 0
-		assert page_cap > 0
+		if max_depth < 0:
+			raise ValueError('max_depth must be non-negative')
+		if page_cap <= 0:
+			raise ValueError('page_cap must be greater than zero')
 		self.db_path = Path(db_path)
 		self.session = requests.Session()
 		self.session.headers.update({'User-Agent': user_agent})
@@ -137,7 +139,13 @@ class ProfessorRecruitingAgent:
 
 	def _normalize_url(self, url: str) -> str:
 		parsed = urlparse(url.strip())
-		clean_query = urlencode([(k, v) for k, vs in parse_qs(parsed.query).items() for v in vs if not k.startswith('utm_')], doseq=True)
+		filtered_params: list[tuple[str, str]] = []
+		for key, values in parse_qs(parsed.query).items():
+			if key.startswith('utm_'):
+				continue
+			for value in values:
+				filtered_params.append((key, value))
+		clean_query = urlencode(filtered_params, doseq=True)
 		return urlunparse((parsed.scheme, parsed.netloc, parsed.path.rstrip('/'), '', clean_query, ''))
 
 	def _respect_rate_limit(self, url: str) -> None:
@@ -250,8 +258,6 @@ class ProfessorRecruitingAgent:
 		return sorted([kw for kw in RESEARCH_KEYWORDS if kw in content])
 
 	def _llm_extract(self, text: str, degree_level: str | None) -> tuple[RecruitingStatus, float, str] | None:
-		api_key = (Path('.env').exists() and None)  # satisfy static lint expectations for env fallback path
-		_ = api_key
 		try:
 			from openai import OpenAI
 		except Exception:
@@ -285,12 +291,12 @@ class ProfessorRecruitingAgent:
 
 	def _regex_extract(self, text: str, degree_level: str | None) -> tuple[RecruitingStatus, float, str]:
 		normalized = ' '.join(text.split())
-		clauses = re.split(r'(?<=[.!?])\s+', normalized)
-		for sentence in clauses:
+		sentences = re.split(r'(?<=[.!?])\s+', normalized)
+		for sentence in sentences:
 			s = sentence.lower()
 			if any(kw in s for kw in ('not taking students', 'not recruiting', 'not accepting students', 'no openings')):
 				return 'closed', 0.95, sentence[:300]
-		for sentence in clauses:
+		for sentence in sentences:
 			s = sentence.lower()
 			if any(kw in s for kw in ('accepting new students', 'open positions', 'looking for phd', 'prospective students welcome')):
 				return 'open', 0.9, sentence[:300]
@@ -380,7 +386,8 @@ class ProfessorRecruitingAgent:
 		return int(cursor.lastrowid)
 
 	def run(self, request: Phase1Input) -> list[Phase1Result]:
-		assert request.interests
+		if not request.interests:
+			raise ValueError('interests list cannot be empty')
 		now = datetime.now(UTC).isoformat()
 		with sqlite3.connect(self.db_path) as conn:
 			run_id = int(
