@@ -14,7 +14,12 @@ def create_app():
 
 	@app.post('/match')
 	def match(request: Phase1Input):
-		return [x.model_dump() for x in agent.run(request)]
+		try:
+			return agent.run_with_metadata(request).model_dump()
+		except ValueError as exc:
+			from fastapi import HTTPException
+
+			raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 	return app
 

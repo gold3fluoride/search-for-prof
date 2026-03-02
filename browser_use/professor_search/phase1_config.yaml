@@ -1,0 +1,24 @@
+crawl:
+  max_depth: 2
+  max_pages_per_professor: 10
+  timeout_seconds: 15
+  retries: 2
+  backoff_seconds: 1.5
+  link_priority_keywords:
+    - prospective
+    - join
+    - openings
+    - positions
+    - phd
+    - intern
+    - students
+
+scoring:
+  interest_weight: 0.65
+  recruiting_weight: 0.35
+  unclear_recruiting_component: 0.2
+  closed_penalty: 0.1
+
+model:
+  provider: openai
+  name: gpt-4o-mini

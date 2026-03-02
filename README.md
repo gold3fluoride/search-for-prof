@@ -96,13 +96,33 @@ Check out the [library docs](https://docs.browser-use.com) and the [cloud docs](
 
 # 🧪 Search-for-Prof Phase 1 (implemented in this repo)
 
-I added a text-input-only Phase 1 pipeline for professor/lab matching and recruiting-status extraction:
+### Phase-1 done contract
+
+- **Input (text-only):** `interests`, `target_institutions`, optional constraints (`degree_level`, `max_professors`, notes/start-term)
+- **Output (ranked professors):**
+  - recruiting status (`open | closed | unclear`)
+  - confidence
+  - evidence quote + URL
+  - fit score
+  - checked timestamp
+
+### Architecture flow (Phase-1)
+
+```text
+Input -> discover_faculty_pages -> resolve_professor_sites -> crawl_professor_pages
+      -> extract_recruiting_signals + extract_research_areas
+      -> compute_fit_score -> rank_results -> persist SQLite + return API/CLI payload
+```
+
+The text-input-only Phase 1 pipeline for professor/lab matching and recruiting-status extraction includes:
 
 - New module: `browser_use/professor_search/service.py`
-  - `Phase1Input` + `Phase1Result` pydantic schemas
+  - `Phase1Input`, `ProfessorCandidate`, `RecruitingEvidence`, `Phase1Result` schemas (`browser_use/professor_search/models.py`)
   - institution seeding (`discover_institution_pages`)
   - faculty/profile URL extraction + URL normalization
   - bounded crawl (depth=2, page cap=10, domain allowlist)
+  - retries + timeout + backoff + normalized URL dedupe
+  - prioritized crawl links: `prospective|join|openings|positions|phd|intern|students`
   - recruiting evidence extraction (`open | closed | unclear`) with confidence
     - optional LLM extraction when `OPENAI_API_KEY` is set
     - regex fallback for explicit recruiting phrases
@@ -110,7 +130,8 @@ I added a text-input-only Phase 1 pipeline for professor/lab matching and recrui
     - `fit_score = 0.6 * interest_similarity + 0.4 * recruiting_confidence_if_open`
     - closed status is penalized
   - SQLite persistence tables:
-    - `professors`, `pages_visited`, `recruiting_evidence`, `runs`, `results`
+    - `runs`, `professors`, `pages_visited`, `evidence`, `results`
+  - config file: `browser_use/professor_search/phase1_config.yaml` (crawl/scoring/model tuning)
   - robots.txt checks + per-domain rate limiting
 - CLI entry script: `run_agent.py`
   - example:
@@ -122,6 +143,32 @@ I added a text-input-only Phase 1 pipeline for professor/lab matching and recrui
     ```
   - outputs terminal table + JSON file (`phase1_results.json` by default)
 - Optional API path via `run_agent.py:create_app()` with `POST /match` (FastAPI if installed).
+  - response contract: `run_id`, `input_echo`, sorted `results[]`
+- Environment variables:
+  - `OPENAI_API_KEY` (optional; enables LLM-based recruiting extraction)
+  - `OPENAI_MODEL` (optional override; defaults to `gpt-4o-mini`)
+- Known limitations:
+  - no login/form submission in Phase-1
+  - focuses on professor/lab/institution domains only
+  - keyword-first interest matching (optional embeddings not enabled by default)
+- JSON response example:
+  ```json
+  {
+    "run_id": 12,
+    "input_echo": {"interests": ["nlp"], "target_institutions": ["CMU"]},
+    "results": [
+      {
+        "name": "Alice Smith",
+        "recruiting_status": "open",
+        "status_confidence": 0.93,
+        "evidence_text": "I am accepting PhD students for Fall 2026.",
+        "evidence_url": "https://example.edu/alice",
+        "fit_score": 0.88,
+        "checked_at": "2026-03-02T15:00:00+00:00"
+      }
+    ]
+  }
+  ```
 - Focused tests added: `tests/test_professor_search_service.py`
 
 <br/>
