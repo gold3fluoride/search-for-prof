@@ -94,6 +94,38 @@ Check out the [library docs](https://docs.browser-use.com) and the [cloud docs](
 
 <br/>
 
+# 🧪 Search-for-Prof Phase 1 (implemented in this repo)
+
+I added a text-input-only Phase 1 pipeline for professor/lab matching and recruiting-status extraction:
+
+- New module: `browser_use/professor_search/service.py`
+  - `Phase1Input` + `Phase1Result` pydantic schemas
+  - institution seeding (`discover_institution_pages`)
+  - faculty/profile URL extraction + URL normalization
+  - bounded crawl (depth=2, page cap=10, domain allowlist)
+  - recruiting evidence extraction (`open | closed | unclear`) with confidence
+    - optional LLM extraction when `OPENAI_API_KEY` is set
+    - regex fallback for explicit recruiting phrases
+  - interest/research matching + fit scoring:
+    - `fit_score = 0.6 * interest_similarity + 0.4 * recruiting_confidence_if_open`
+    - closed status is penalized
+  - SQLite persistence tables:
+    - `professors`, `pages_visited`, `recruiting_evidence`, `runs`, `results`
+  - robots.txt checks + per-domain rate limiting
+- CLI entry script: `run_agent.py`
+  - example:
+    ```bash
+    python run_agent.py \
+      --interests "NLP, LLM alignment, information retrieval" \
+      --institution "University of X" \
+      --degree phd
+    ```
+  - outputs terminal table + JSON file (`phase1_results.json` by default)
+- Optional API path via `run_agent.py:create_app()` with `POST /match` (FastAPI if installed).
+- Focused tests added: `tests/test_professor_search_service.py`
+
+<br/>
+
 # Demos
 
 

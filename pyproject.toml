@@ -45,6 +45,8 @@ dependencies = [
     "pyotp==2.9.0",
     "pillow==12.1.0",
     "cloudpickle==3.1.2",
+    "beautifulsoup4==4.13.4",
+    "lxml==5.3.0",
     "markdownify==1.2.2",
     "python-docx==1.2.0",
     "browser-use-sdk==2.0.15",
