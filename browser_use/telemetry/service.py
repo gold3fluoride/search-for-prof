@@ -29,7 +29,9 @@ class ProductTelemetry:
 	"""
 
 	USER_ID_PATH = str(CONFIG.BROWSER_USE_CONFIG_DIR / 'device_id')
-	PROJECT_API_KEY = 'phc_F8JMNjW1i2KbGUTaW1unnDdLSPCoyc52SGRU0JecaUh'
+	# Default public write-only telemetry key; override via POSTHOG_PROJECT_API_KEY env var
+	_DEFAULT_POSTHOG_KEY = 'phc_F8JMNjW1i2KbGUTaW1unnDdLSPCoyc52SGRU0JecaUh'
+	PROJECT_API_KEY = os.getenv('POSTHOG_PROJECT_API_KEY', _DEFAULT_POSTHOG_KEY)
 	HOST = 'https://eu.i.posthog.com'
 	UNKNOWN_USER_ID = 'UNKNOWN'
 
