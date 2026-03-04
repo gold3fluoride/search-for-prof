@@ -96,6 +96,83 @@ Check out the [library docs](https://docs.browser-use.com) and the [cloud docs](
 
 # 🧪 Search-for-Prof Phase 1 (implemented in this repo)
 
+## 🚀 Easy Start — Phase 1 Professor Search
+
+### Prerequisites
+- Python ≥ 3.11
+- [`uv`](https://docs.astral.sh/uv/) package manager
+
+### 1. Clone & set up environment
+
+```bash
+git clone https://github.com/gold3fluoride/search-for-prof.git
+cd search-for-prof
+uv venv --python 3.11
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+uv sync
+```
+
+### 2. Configure environment variables
+
+```bash
+cp .env.example .env
+# Edit .env and set the keys you need:
+# OPENAI_API_KEY=sk-...   (optional – enables LLM-based recruiting extraction)
+# OPENAI_MODEL=gpt-4o-mini   (optional override; defaults to gpt-4o-mini)
+```
+
+### 3. Run the Phase 1 CLI
+
+```bash
+python run_agent.py \
+  --interests "NLP, LLM alignment, information retrieval" \
+  --institution "Carnegie Mellon University" \
+  --degree phd
+```
+
+Results are written to the terminal **and** saved to `phase1_results.json` (and `professor_recruiting.db`).
+
+Additional options:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--institution` | *(required, repeatable)* | Institution name or faculty-page URL |
+| `--interests` | *(required)* | Comma-separated research interests |
+| `--degree` | — | `intern` / `masters` / `phd` |
+| `--max-professors` | — | Cap on professors returned |
+| `--start-term` | — | e.g. `Fall 2026` |
+| `--output-json` | `phase1_results.json` | JSON output path |
+| `--output-csv` | — | Optional CSV output path |
+| `--db-path` | `professor_recruiting.db` | SQLite DB path |
+
+### 4. Optional: run as a REST API
+
+```bash
+uvicorn run_agent:create_app --factory --reload
+# POST http://localhost:8000/match
+```
+
+Request body example:
+
+```json
+{
+  "interests": ["nlp", "llm alignment"],
+  "target_institutions": ["MIT", "Stanford"],
+  "degree_level": "phd"
+}
+```
+
+### Common troubleshooting
+
+| Symptom | Fix |
+|---------|-----|
+| `ModuleNotFoundError` | Make sure you ran `uv sync` inside the virtualenv |
+| LLM extraction skipped | Set `OPENAI_API_KEY` in `.env`; regex fallback is used otherwise |
+| Empty results | Try a broader institution name or check network access |
+| FastAPI not found | `uv add fastapi uvicorn` to enable the API path |
+
+---
+
 ### Phase-1 done contract
 
 - **Input (text-only):** `interests`, `target_institutions`, optional constraints (`degree_level`, `max_professors`, notes/start-term)
